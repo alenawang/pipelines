@@ -165,7 +165,7 @@ func Test_executeV2_publishLogs(t *testing.T) {
 				},
 			},
 			[]string{"-c", "echo testoutput && test {{$.inputs.parameters['a']}} -eq 1 || exit 1\ntest {{$.inputs.parameters['b']}} -eq 2 || exit 1"},
-			true,
+			false,
 			true,
 		},
 		{
@@ -236,6 +236,7 @@ func Test_executeV2_publishLogs(t *testing.T) {
 			}
 
 			assert.Len(t, outputArtifacts, 1, "Expected 1 output artifact (executor-logs)")
+			assert.Equal(t, 2, fakeMetadataClient.RecordArtifactCalls)
 
 			if !test.uploadFailure { // Should successfully publish to bucket
 				outputLog, err := bucket.ReadAll(context.TODO(), "executor-logs")

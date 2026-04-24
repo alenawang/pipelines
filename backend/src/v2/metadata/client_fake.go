@@ -28,6 +28,7 @@ import (
 )
 
 type FakeClient struct {
+	RecordArtifactCalls int
 }
 
 func NewFakeClient() *FakeClient {
@@ -90,6 +91,7 @@ func (c *FakeClient) GetOutputArtifactsByExecutionId(ctx context.Context, execut
 }
 
 func (c *FakeClient) RecordArtifact(ctx context.Context, outputName, schema string, runtimeArtifact *pipelinespec.RuntimeArtifact, state pb.Artifact_State, bucketConfig *objectstore.Config) (*OutputArtifact, error) {
+	c.RecordArtifactCalls++
 	return nil, nil
 }
 
