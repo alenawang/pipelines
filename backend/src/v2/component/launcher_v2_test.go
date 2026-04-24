@@ -122,6 +122,7 @@ func Test_executeV2_publishLogs(t *testing.T) {
 		executorInput *pipelinespec.ExecutorInput
 		executorArgs  []string
 		wantErr       bool
+		uploadFailure bool
 	}{
 		{
 			"happy pass",
@@ -131,6 +132,7 @@ func Test_executeV2_publishLogs(t *testing.T) {
 				},
 			},
 			[]string{"-c", "echo testoutput && test {{$.inputs.parameters['a']}} -eq 1 || exit 1\ntest {{$.inputs.parameters['b']}} -eq 2 || exit 1"},
+			false,
 			false,
 		},
 		{
@@ -142,6 +144,7 @@ func Test_executeV2_publishLogs(t *testing.T) {
 			},
 			[]string{"-c", "echo testoutput && test {{$.inputs.parameters['a']}} -eq 5 || exit 1\ntest {{$.inputs.parameters['b']}} -eq 2 || exit 1"},
 			false,
+			false,
 		},
 		{
 			"sad fail",
@@ -151,6 +154,29 @@ func Test_executeV2_publishLogs(t *testing.T) {
 				},
 			},
 			[]string{"-c", "echo testoutput && exit 1"},
+			true,
+			false,
+		},
+		{
+			"retry required - component success",
+			&pipelinespec.ExecutorInput{
+				Inputs: &pipelinespec.ExecutorInput_Inputs{
+					ParameterValues: map[string]*structpb.Value{"a": structpb.NewNumberValue(1), "b": structpb.NewNumberValue(2)},
+				},
+			},
+			[]string{"-c", "echo testoutput && test {{$.inputs.parameters['a']}} -eq 1 || exit 1\ntest {{$.inputs.parameters['b']}} -eq 2 || exit 1"},
+			true,
+			true,
+		},
+		{
+			"retry required - component failure",
+			&pipelinespec.ExecutorInput{
+				Inputs: &pipelinespec.ExecutorInput_Inputs{
+					ParameterValues: map[string]*structpb.Value{"a": structpb.NewNumberValue(1), "b": structpb.NewNumberValue(2)},
+				},
+			},
+			[]string{"-c", "echo testoutput && exit 1"},
+			true,
 			true,
 		},
 	}
@@ -183,6 +209,10 @@ func Test_executeV2_publishLogs(t *testing.T) {
 				},
 			}
 
+			if test.uploadFailure {
+				bucket.Close()
+			}
+
 			_, outputArtifacts, err := executeV2(
 				context.Background(),
 				test.executorInput,
@@ -205,11 +235,13 @@ func Test_executeV2_publishLogs(t *testing.T) {
 				assert.Nil(t, err)
 			}
 
-			outputLog, err := bucket.ReadAll(context.TODO(), "executor-logs")
-			assert.Nil(t, err, "Expected executor-logs to be readable")
-			assert.Equal(t, "testoutput\n", string(outputLog))
-
 			assert.Len(t, outputArtifacts, 1, "Expected 1 output artifact (executor-logs)")
+
+			if !test.uploadFailure { // Should successfully publish to bucket
+				outputLog, err := bucket.ReadAll(context.TODO(), "executor-logs")
+				assert.Nil(t, err, "Expected executor-logs to be readable")
+				assert.Equal(t, "testoutput\n", string(outputLog))
+			}
 		})
 	}
 }
