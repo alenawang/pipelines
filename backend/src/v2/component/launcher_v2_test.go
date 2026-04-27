@@ -184,7 +184,14 @@ func Test_executeV2_publishLogs(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			fakeKubernetesClientset := &fake.Clientset{}
-			fakeMetadataClient := metadata.NewFakeClient()
+			var fakeMetadataClient metadata.ClientInterface
+			var countingFakeMetadataClient *metadata.RecordArtifactFailureFakeClient
+			if test.uploadFailure {
+				countingFakeMetadataClient = metadata.NewRecordArtifactFailureFakeClient(1)
+				fakeMetadataClient = countingFakeMetadataClient
+			} else {
+				fakeMetadataClient = metadata.NewFakeClient()
+			}
 			bucket, err := blob.OpenBucket(context.Background(), "mem://test-bucket")
 			assert.Nil(t, err)
 			bucketConfig, err := objectstore.ParseBucketConfig("mem://test-bucket/pipeline-root/", nil)
@@ -207,10 +214,6 @@ func Test_executeV2_publishLogs(t *testing.T) {
 						CustomPath: &customPath,
 					},
 				},
-			}
-
-			if test.uploadFailure {
-				bucket.Close()
 			}
 
 			_, outputArtifacts, err := executeV2(
@@ -236,12 +239,13 @@ func Test_executeV2_publishLogs(t *testing.T) {
 			}
 
 			assert.Len(t, outputArtifacts, 1, "Expected 1 output artifact (executor-logs)")
-			assert.Equal(t, 2, fakeMetadataClient.RecordArtifactCalls)
 
-			if !test.uploadFailure { // Should successfully publish to bucket
-				outputLog, err := bucket.ReadAll(context.TODO(), "executor-logs")
-				assert.Nil(t, err, "Expected executor-logs to be readable")
-				assert.Equal(t, "testoutput\n", string(outputLog))
+			outputLog, err := bucket.ReadAll(context.TODO(), "executor-logs")
+			assert.Nil(t, err, "Expected executor-logs to be readable")
+			assert.Equal(t, "testoutput\n", string(outputLog))
+
+			if test.uploadFailure {
+				assert.Equal(t, 2, countingFakeMetadataClient.RecordArtifactCalls)
 			}
 		})
 	}
